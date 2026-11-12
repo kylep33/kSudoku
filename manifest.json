@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "id": "ksudoku",
+  "name": "ksudoku",
+  "author": "kylep33",
+  "description": "i love sudoku. the main reason i jailbroke my kindle. here is the sudoku game that I wanted with notes, and additional settings and QOL things and stuff.",
+  "version": [1, 2, 5],
+  "dependencies": [],
+  "supported_platforms": null
+}

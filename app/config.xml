@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget id="com.kylep33.ksudoku" version="1.2.5" viewmodes="application"
+        xmlns="http://www.w3.org/ns/widgets"
+        xmlns:kindle="http://kindle.amazon.com/ns/widget-extensions">
+  <name xml:lang="en">ksudoku</name>
+  <description xml:lang="en">Sudoku for Kindle</description>
+  <content src="index.html" />
+  <feature name="http://kindle.amazon.com/apis" required="true">
+    <param name="chrome" value="yes" />
+    <param name="appmgr" value="yes" />
+  </feature>
+</widget>

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ksudoku</title>
+<style>
+  /* Pure black/white/grey: e-ink shows mid-tones poorly and ghosts on gradients. */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; color: #000; font-family: sans-serif; }
+  #wrap { margin: 0 auto; padding: 2% 3%; }
+  #top { display: table; table-layout: fixed; width: 100%; margin-bottom: 2%; }
+  #top > div { display: table-cell; vertical-align: middle; }
+  #title { width: 34%; font-weight: bold; }
+  #level { text-align: center; }
+  #top .r { width: 34%; text-align: right; white-space: nowrap; }
+  #ghostBtn { padding: 0.15em 0.35em; margin-right: 0.4em; vertical-align: middle; }
+  #ghostBtn img { width: 1.3em; height: 1.3em; display: block; }
+  #refresh { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 9; }
+  button { font: inherit; background: #fff; color: #000; border: 2px solid #000; border-radius: 6px; padding: 0.3em 0.6em; }
+  button.on { background: #000; color: #fff; }
+
+  table { border-collapse: collapse; margin: 0 auto; table-layout: fixed; }
+  #board { border: 4px solid #000; background: #fff; } /* tiles stay solid over the picture */
+  #board td { border: 1px solid #888; text-align: center; vertical-align: middle; padding: 0; position: relative; }
+  #board td.bR { border-right: 3px solid #000; }
+  #board td.bB { border-bottom: 3px solid #000; }
+  #board td.g { font-weight: bold; }
+  #board td.u { color: #444; }
+  /* No grey fills: e-ink partial refresh flashes them black. Selection is an outline. */
+  #board td.sel { box-shadow: inset 0 0 0 4px #000; }
+  #board td.same { text-decoration: underline; }
+  #board td.flash { background: #000; color: #fff; }
+  .notes { overflow: hidden; margin: 0 auto; }
+  .notes span { float: left; text-align: center; color: #333; overflow: hidden; }
+
+  #pad { width: 100%; }
+  #pad td { padding: 1%; }
+  #pad button { width: 100%; padding: 0.4em 0; font-weight: bold; }
+  #pad button.done-grey { color: #aaa; border-color: #ccc; border-style: dashed; font-weight: normal; }
+  #pad button.done-hide { visibility: hidden; }
+  #tools { margin-top: 2%; text-align: center; }
+  #tools button { margin: 0 2%; min-width: 30%; }
+
+  /* Mostly-opaque white boxes keep everything readable over the line art. */
+  #top, #controls, .box, #toast { background: rgba(255,255,255,0.9); border: 2px solid #000; border-radius: 8px; }
+  #top, #controls { padding: 1.5% 2%; }
+  #controls { margin-top: 3%; }
+  .box { padding: 4%; }
+
+  .sheet { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: #fff; padding: 6%; overflow: hidden; }
+  .sheet.open { display: block; }
+  .head { display: table; width: 100%; margin-bottom: 2%; }
+  .head > * { display: table-cell; vertical-align: middle; }
+  .head h2 { margin: 0; }
+  .head .back { text-align: right; }
+  .done { font-size: 1.3em; font-weight: bold; border-width: 3px; }
+  .shout { margin: -2% 0 5%; text-align: right; font-weight: bold; }
+  .shout .arrow { display: inline-block; width: 0; height: 0; margin: 0 0.9em 0 0.4em; vertical-align: middle;
+    border-left: 0.45em solid transparent; border-right: 0.45em solid transparent; border-bottom: 0.7em solid #000; }
+  .row { margin-bottom: 6%; }
+  .lbl { margin-bottom: 2%; }
+  .row button { margin-right: 2%; }
+  .ver { margin: 0; text-align: right; font-size: 0.8em; color: #555; }
+  .row .main { min-width: 45%; font-weight: bold; }
+  .choice { display: block; width: 100%; text-align: left; padding: 4% 5%; margin-bottom: 4%; }
+  .choice b { display: block; font-size: 1.15em; }
+  .choice span { display: block; font-size: 0.85em; margin-top: 1%; }
+  .choice.half { display: inline-block; width: 47%; margin: 0 2% 4% 0; text-align: center; font-weight: bold; }
+  #pickDiff { display: none; }
+  #newSheet.diff #pickKind { display: none; }
+  #newSheet.diff #pickDiff { display: block; }
+
+  /* Picture backgrounds; the size is set in px from JS (Mesquite's CSS units are unreliable). */
+  .pic { background-color: #fff; background-image: url(bg.png); background-repeat: no-repeat; background-position: 70% center; }
+  .chk { display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid #000; vertical-align: middle;
+    margin-right: 0.4em; background: #fff; }
+  .chk.y { background: #000; box-shadow: inset 0 0 0 3px #fff; }
+
+  #achList { list-style: none; margin: 0; padding: 0; }
+  #achSheet { padding: 3% 6%; }
+  #achList li { padding: 2.5% 0; border-bottom: 1px solid #000; }
+  #achList li:last-child { border-bottom: 0; }
+  #achList .t { font-weight: bold; }
+  #achList .d { margin: 1% 0 0 1.5em; font-size: 0.9em; }
+  #achList .locked { color: #555; }
+  /* Page controls sit under the title so they are always on screen. At the ends they grey out
+     instead of vanishing, so nothing moves under your finger. */
+  .pager { display: table; table-layout: fixed; width: 100%; margin: 0 0 3%; }
+  .pager > * { display: table-cell; vertical-align: middle; }
+  .pager button { width: 100%; padding: 0.5em 0; font-weight: bold; }
+  .pager button:disabled { color: #aaa; border-color: #ccc; border-style: dashed; font-weight: normal; }
+  .pager .mid { width: 30%; text-align: center; }
+
+  #toast { display: none; position: fixed; left: 6%; right: 6%; top: 3%; padding: 3% 4%; z-index: 8; font-weight: bold; text-align: center; }
+  #win { text-align: center; padding-top: 20%; }
+  #win h1 { font-size: 3em; margin: 0 0 4%; }
+  #winTime { font-size: 1.3em; margin: 0 0 4%; }
+  #winAch { text-align: left; margin: 0 auto 6%; max-width: 30em; }
+  #egg { text-align: center; padding-top: 15%; }
+  #egg img { width: 100%; height: auto; display: block; margin-bottom: 6%; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="top">
+    <div id="title">ksudoku</div>
+    <div id="level"></div>
+    <div class="r"><button id="ghostBtn" aria-label="Refresh screen"><img src="ghost.png" alt=""></button><button id="gear">Settings</button></div>
+  </div>
+  <table id="board"></table>
+  <div id="controls">
+    <table id="pad"><tr></tr></table>
+    <div id="tools">
+      <button id="notesBtn">Notes</button><button id="eraseBtn">Erase</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings" class="sheet pic"><div class="box">
+  <div class="head">
+    <h2>Settings</h2>
+    <div class="back"><button id="closeBtn" class="done">Done</button></div>
+  </div>
+  <p class="shout">CLICK THIS TO RETURN TO GAME!!!!!! <span class="arrow"></span></p>
+  <div class="row"><button id="newBtn" class="main">New game</button><button id="restartBtn" class="main">Restart puzzle</button></div>
+  <div class="row"><div class="lbl">When a number is complete</div>
+    <button data-done="show">Keep</button><button data-done="grey">Grey out</button><button data-done="hide">Hide</button>
+  </div>
+  <div class="row"><button id="bgBtn"><span class="chk" id="bgChk"></span>Picture background</button></div>
+  <div class="row"><button id="achBtn">Achievements <span id="achCount"></span></button></div>
+  <p class="ver" id="ver"></p>
+</div></div>
+
+<!-- New game in two steps: pick the kind, then (for 9x9) the difficulty. -->
+<div id="newSheet" class="sheet pic"><div class="box">
+  <div class="head">
+    <h2>New game</h2>
+    <div class="back"><button id="newBack" class="done">Back</button></div>
+  </div>
+  <div id="pickKind">
+    <button id="pickSpeed" class="choice"><b>Speed puzzle</b><span>6x6, timed. Best: <i id="best"></i></span></button>
+    <button id="pick9" class="choice"><b>Standard 9x9</b><span>Choose a difficulty next</span></button>
+  </div>
+  <div id="pickDiff">
+    <p class="lbl">Standard 9x9: pick a difficulty</p>
+    <button data-diff="easy" class="choice half">Easy</button><button data-diff="medium" class="choice half">Medium</button>
+    <button data-diff="hard" class="choice half">Hard</button><button data-diff="super" class="choice half">Super hard</button>
+  </div>
+</div></div>
+
+<div id="achSheet" class="sheet pic"><div class="box">
+  <div class="head">
+    <h2>Achievements</h2>
+    <div class="back"><button id="achDone" class="done">Done</button></div>
+  </div>
+  <div class="pager"><div><button id="achPrev">Previous</button></div><div class="mid" id="achPage"></div><div><button id="achNext">Next</button></div></div>
+  <ul id="achList"></ul>
+</div></div>
+
+<div id="win" class="sheet">
+  <h1>Solved!</h1>
+  <p id="winTime"></p>
+  <div id="winAch"></div>
+  <button id="winNew">New game</button>
+</div>
+
+<div id="egg" class="sheet">
+  <img id="eggImg" alt="Problem Sleuth dancing">
+  <button id="eggClose">Close</button>
+</div>
+
+<div id="toast"></div>
+<div id="refresh"></div>
+
+<script src="sudoku.js"></script>
+<script>
+(function () {
+  // super asks for 17 (the theoretical minimum), so the generator strips every clue it can and stays unique.
+  var CLUES = { easy: 40, medium: 32, hard: 26, super: 17, speed: 13 };
+  var LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard', super: 'Super hard', speed: 'Speed' };
+  var VERSION = '1.2.5'; // test.js checks this matches manifest.json
+  var KEY = 'ksudoku.v1', STATS = 'ksudoku.stats';
+  var ACH = [
+    { id: 'clean-easy', t: 'No Hints: Easy', d: 'Beat an Easy puzzle without hints.' },
+    { id: 'clean-medium', t: 'No Hints: Medium', d: 'Beat a Medium puzzle without hints.' },
+    { id: 'clean-hard', t: 'No Hints: Hard', d: 'Beat a Hard puzzle without hints.' },
+    { id: 'clean-super', t: 'No Hints: Super Hard', d: 'Beat a Super hard puzzle without hints.' },
+    { id: 'speedy', t: 'Speedy Gonzalez', d: 'Beat an Easy puzzle in under 90 seconds.' },
+    { id: 'pairs', t: 'Seeing Pairs', d: 'Solve a puzzle that needs naked or hidden pairs.' },
+    { id: 'xwing', t: 'X Marks the Spot', d: 'Solve a puzzle that needs an X-Wing.' },
+    { id: 'swordfish', t: 'Swordsman', d: 'Solve a puzzle that needs a Swordfish.' },
+    { id: 'xywing', t: 'Wing It', d: 'Solve a puzzle that needs an XY-Wing.' },
+    { id: 'chains', t: 'Chain Reaction', d: 'Solve a puzzle that needs coloring or chains.' },
+    { id: 'corners', t: 'Corner to Corner', d: 'Fill all four corners correctly before anything else.' },
+    { id: 'ghost', t: 'Who You Gonna Call?', d: 'Tapped the ghost five times in a row.', hidden: true }
+  ];
+  var s, st, G, sel = -1, notesMode = false, cells = [], keys = [], ghostRun = 0, toastTimer;
+
+  function $(id) { return document.getElementById(id); }
+  function setHTML(el, h) { if (el.innerHTML !== h) el.innerHTML = h; } // every write is an e-ink redraw
+  function each(list, fn) { for (var i = 0; i < list.length; i++) fn(list[i], i); }
+  function zeros(n) { var a = []; for (var i = 0; i < n; i++) a.push(0); return a; }
+  function clock(secs) { var m = Math.floor(secs / 60), x = secs % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
+  function corners() { var n = G.n; return [0, n - 1, n * (n - 1), n * n - 1]; }
+  function cornersDone() { return corners().every(function (i) { return s.val[i] === s.sol[i]; }); }
+  var SHEETS = ['settings', 'newSheet', 'achSheet', 'win', 'egg'];
+  function sheetOpen() { return SHEETS.some(function (id) { return /open/.test($(id).className); }); }
+  function closeAll() { $('settings').className = $('newSheet').className = 'sheet pic'; }
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  function saveStats() { try { localStorage.setItem(STATS, JSON.stringify(st)); } catch (e) {} }
+  function load() {
+    try {
+      var x = JSON.parse(localStorage.getItem(KEY));
+      if (!x || !x.val) return null;
+      // Saves from before 1.2 had no size, timer or grade.
+      if (!x.n) x.n = 9;
+      if (x.val.length !== x.n * x.n) return null;
+      if (!x.bgPicked) x.bg = true; // on unless the player chose with the toggle
+      if (x.secs == null) x.secs = 0;
+      if (!x.needs) { x.needs = {}; x.ladder = true; }
+      return x;
+    } catch (e) { return null; }
+  }
+  function loadStats() {
+    try { var x = JSON.parse(localStorage.getItem(STATS)); if (x && x.got) return x; } catch (e) {}
+    return { got: {}, best: null };
+  }
+
+  function newGame(diff) {
+    var n = diff === 'speed' ? 6 : 9, r = (/hard|super/.test(diff) ? Sudoku.generateHard : Sudoku.generate)(n, CLUES[diff]);
+    s = { diff: diff, n: n, done: s ? s.done : 'grey', bg: s ? s.bg : true, bgPicked: s ? s.bgPicked : false,
+          given: r.puzzle, sol: r.solution, val: r.puzzle.slice(), notes: zeros(n * n), won: false,
+          needs: r.grade.used, ladder: r.grade.solved };
+    begin();
+  }
+  function begin() {  // fresh start of the current puzzle (new game or restart)
+    s.val = s.given.slice(); s.notes = zeros(s.n * s.n); s.won = false; s.secs = 0; sel = -1;
+    build();
+    s.corner = corners().some(function (i) { return !s.given[i]; }); // only counts if there's a corner to fill
+    save(); render();
+  }
+
+  // Board and number pad for the current grid size.
+  function build() {
+    G = Sudoku.geom(s.n);
+    if (build.n === s.n) return;
+    build.n = s.n;
+    var n = G.n, b = $('board'), html = '';
+    for (var r = 0; r < n; r++) {
+      html += '<tr>';
+      for (var c = 0; c < n; c++) html += '<td data-i="' + (r * n + c) + '"></td>';
+      html += '</tr>';
+    }
+    b.innerHTML = html;
+    cells = b.getElementsByTagName('td');
+    each(cells, function (td, i) {  // thick lines between boxes
+      var r = Math.floor(i / n), c = i % n;
+      td.base = (c % G.bc === G.bc - 1 && c < n - 1 ? ' bR' : '') + (r % G.br === G.br - 1 && r < n - 1 ? ' bB' : '');
+    });
+    var row = $('pad').rows[0], ph = '';
+    for (var d = 1; d <= n; d++) ph += '<td><button data-n="' + d + '">' + d + '</button></td>';
+    row.innerHTML = ph;
+    keys = row.getElementsByTagName('button');
+    size();
+  }
+
+  // Size from the real viewport: Mesquite's CSS unit support is unreliable.
+  function size() {
+    var w = Math.min(window.innerWidth * 0.94, window.innerHeight * 0.62);
+    var cs = Math.floor(w / G.n);
+    each(cells, function (td) { td.style.width = td.style.height = cs + 'px'; td.style.fontSize = Math.floor(cs * (G.n === 9 ? 0.6 : 0.5)) + 'px'; });
+    $('board').style.width = cs * G.n + 'px';
+    document.body.style.fontSize = Math.max(16, Math.floor(Math.min(cs, window.innerWidth * 0.94 / 9) * 0.4)) + 'px';
+    // Background height matches the screen; width overflows and is cropped around the rider.
+    var bgs = 'auto ' + window.innerHeight + 'px';
+    each([document.body, $('settings'), $('newSheet'), $('achSheet')], function (el) { el.style.backgroundSize = bgs; el.style.webkitBackgroundSize = bgs; });
+    size.cs = cs;
+  }
+
+  function solvedText() { return 'Solved in ' + clock(s.secs) + '.'; }
+  function levelText() { return LABEL[s.diff] + (s.diff === 'speed' ? ' ' + clock(s.secs) : ''); }
+
+  function render() {
+    var n = G.n, counts = zeros(n + 1), selV = sel >= 0 ? s.val[sel] : 0, cs = size.cs;
+    each(cells, function (td, i) {
+      var v = s.val[i], cls = td.base + (s.given[i] ? ' g' : ' u');
+      counts[v]++;
+      if (i === sel) cls += ' sel';
+      if (selV && v === selV && i !== sel) cls += ' same';
+      if (td.className !== cls) td.className = cls;  // write only on change: every write is an e-ink redraw
+      var key = v ? 'v' + v : 'n' + s.notes[i] + ':' + cs;
+      if (td.key === key) return;
+      td.key = key;
+      if (v) { td.innerHTML = v; return; }
+      if (!s.notes[i]) { td.innerHTML = ''; return; }
+      // Notes in rows of three; a fixed pixel box so a notes cell never grows taller than its row.
+      var t = Math.floor(cs / 3), sp = 'width:' + t + 'px;height:' + t + 'px;line-height:' + t + 'px;font-size:' + Math.floor(cs * 0.26) + 'px';
+      var h = '<div class="notes" style="width:' + t * 3 + 'px;height:' + t * (n / 3) + 'px">';
+      for (var d = 1; d <= n; d++) h += '<span style="' + sp + '">' + (s.notes[i] & (1 << d) ? d : '&nbsp;') + '</span>';
+      td.innerHTML = h + '</div>';
+    });
+    each(keys, function (k, i) {
+      var c = counts[i + 1] >= n && s.done !== 'show' ? 'done-' + s.done : '';
+      if (k.className !== c) k.className = c;
+    });
+    $('notesBtn').className = notesMode ? 'on' : '';
+    document.body.className = s.bg ? 'pic' : '';
+    $('bgChk').className = s.bg ? 'chk y' : 'chk';
+    setHTML($('level'), levelText());
+    setHTML($('best'), st.best ? clock(st.best) : 'none yet');
+    setHTML($('achCount'), Object.keys(st.got).length + ' of ' + ACH.length);
+    each(document.querySelectorAll('[data-diff]'), function (b) { b.className = 'choice half' + (b.getAttribute('data-diff') === s.diff ? ' on' : ''); });
+    each(document.querySelectorAll('[data-done]'), function (b) { b.className = b.getAttribute('data-done') === s.done ? 'on' : ''; });
+  }
+
+  // ---- achievements ----
+  function award(id, quiet) {
+    if (st.got[id]) return false;
+    st.got[id] = Date.now(); saveStats();
+    if (!quiet) toast('Achievement unlocked: ' + ACH.filter(function (a) { return a.id === id; })[0].t);
+    return true;
+  }
+  function toast(msg) {
+    var t = $('toast'); t.innerHTML = msg; t.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.style.display = 'none'; }, 3500);
+  }
+  // Pages, not scrolling: e-ink can't scroll smoothly. Pages are measured on the real screen when
+  // the sheet opens, so they fit whatever the text size; turning a page only shows/hides items.
+  var achPage = 0, achPages = 1;
+  function openAch() {
+    $('achSheet').className = 'sheet pic open';  // must be on screen to measure
+    var list = $('achList');
+    list.innerHTML = ACH.map(function (a) {
+      var got = !!st.got[a.id], secret = a.hidden && !got;
+      return '<li' + (got ? '' : ' class="locked"') + '><div class="t"><span class="chk' + (got ? ' y' : '') + '"></span>' +
+        (secret ? 'HIDDEN. GOOD LUCK' : a.t) + '</div>' + (secret ? '' : '<div class="d">' + a.d + '</div>') + '</li>';
+    }).join('');
+    var lis = list.getElementsByTagName('li'), bottom = window.innerHeight - window.innerWidth * 0.1, page = 0, start = null;
+    each(lis, function (li) {
+      var r = li.getBoundingClientRect();
+      if (start === null) start = r.top;
+      else if (r.bottom - start > bottom - list.getBoundingClientRect().top) { page++; start = r.top; }
+      li.page = page;
+    });
+    achPages = page + 1; achPage = 0;
+    showAchPage();
+  }
+  function showAchPage() {
+    achPage = Math.max(0, Math.min(achPage, achPages - 1));
+    each($('achList').getElementsByTagName('li'), function (li) { li.style.display = li.page === achPage ? '' : 'none'; });
+    $('achPrev').disabled = achPage === 0;
+    $('achNext').disabled = achPage === achPages - 1;
+    $('achPage').innerHTML = 'Page ' + (achPage + 1) + ' of ' + achPages;
+  }
+  // Swipe left/right to turn pages, like reading a book.
+  (function () {
+    var x0, y0, el = $('achSheet');
+    el.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, false);
+    el.addEventListener('touchend', function (e) {
+      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { achPage += dx < 0 ? 1 : -1; showAchPage(); }
+    }, false);
+  })();
+
+  function press(d) {
+    if (sel < 0 || s.given[sel] || s.won) return;
+    if (notesMode) {
+      if (s.val[sel]) return;
+      s.notes[sel] ^= 1 << d;
+    } else {
+      s.val[sel] = s.val[sel] === d ? 0 : d;
+      s.notes[sel] = 0;
+      // Placing a digit clears it from notes it now rules out.
+      if (s.val[sel]) each(G.peers[sel], function (i) { s.notes[i] &= ~(1 << d); });
+      if (s.val[sel] && s.corner) {
+        if (cornersDone()) { s.corner = false; award('corners'); }
+        else if (corners().indexOf(sel) < 0) s.corner = false;  // filled something else first
+      }
+    }
+    save(); render();
+    if (s.val.join() === s.sol.join()) win();
+  }
+
+  // A diagonal wave across the board, then the banner. Few frames: e-ink redraws are slow.
+  function win() {
+    s.won = true; save();
+    var got = [], u = s.needs;
+    function earn(id) { if (award(id, true)) got.push(id); }
+    if (s.diff !== 'speed') earn('clean-' + s.diff);
+    if (s.diff === 'easy' && s.secs < 90) earn('speedy');
+    if (u.pairs) earn('pairs');
+    if (u.xwing) earn('xwing');
+    if (u.swordfish) earn('swordfish');
+    if (u.xywing) earn('xywing');
+    if (u.coloring || !s.ladder) earn('chains');
+    var best = '';
+    if (s.diff === 'speed') {
+      if (!st.best || s.secs < st.best) { st.best = s.secs; saveStats(); best = ' New best!'; }
+      else best = ' (best ' + clock(st.best) + ')';
+    }
+    $('winTime').innerHTML = solvedText() + best;
+    $('winAch').innerHTML = got.length ? '<b>Achievements unlocked</b><ul>' + got.map(function (id) {
+      return '<li>' + ACH.filter(function (a) { return a.id === id; })[0].t + '</li>'; }).join('') + '</ul>' : '';
+    var step = 0, n = G.n;
+    (function frame() {
+      each(cells, function (td, i) {
+        var dd = Math.floor(i / n) + i % n;
+        td.className = td.className.replace(' flash', '') + (dd >= step - 2 && dd <= step ? ' flash' : '');
+      });
+      step += 3;
+      if (step <= 2 * n) setTimeout(frame, 150);
+      else setTimeout(function () { $('win').className = 'sheet open'; }, 300);
+    })();
+  }
+
+  // Black then white over the whole screen makes the Kindle do a full flashing refresh, clearing ghosting.
+  function deghost() {
+    var o = $('refresh');
+    o.style.background = '#000'; o.style.display = 'block';
+    setTimeout(function () { o.style.background = '#fff'; }, 250);
+    setTimeout(function () { o.style.display = 'none'; }, 500);
+  }
+
+  // The clock runs while a puzzle is on screen; it pauses under any sheet.
+  setInterval(function () {
+    if (!s || s.won || sheetOpen()) return;
+    s.secs++;
+    if (s.secs % 5 === 0) save();
+    if (s.diff === 'speed') $('level').innerHTML = levelText();
+  }, 1000);
+
+  function onTap(e) {
+    var t = e.target;
+    while (t && t !== document && !t.getAttribute('data-i') && t.tagName !== 'BUTTON') t = t.parentNode;
+    if (!t || t === document) return;
+    if (t.id !== 'ghostBtn') ghostRun = 0;
+    if (t.getAttribute('data-i')) { sel = +t.getAttribute('data-i'); render(); return; }
+    if (t.getAttribute('data-n')) return press(+t.getAttribute('data-n'));
+    if (t.getAttribute('data-diff')) { closeAll(); return newGame(t.getAttribute('data-diff')); }
+    if (t.getAttribute('data-done')) { s.done = t.getAttribute('data-done'); save(); return render(); }
+    switch (t.id) {
+      case 'gear': $('settings').className = 'sheet pic open'; break;
+      case 'closeBtn': $('settings').className = 'sheet pic'; break;
+      case 'achBtn': openAch(); break;
+      case 'achPrev': achPage--; showAchPage(); break;
+      case 'achNext': achPage++; showAchPage(); break;
+      case 'achDone': $('achSheet').className = 'sheet pic'; break;
+      case 'ghostBtn':
+        if (++ghostRun < 5) { deghost(); break; }
+        ghostRun = 0;
+        award('ghost', true);
+        $('eggImg').src = 'sleuth.gif?' + Date.now(); // fresh load restarts the animation
+        $('egg').className = 'sheet open';
+        break;
+      case 'eggClose': $('egg').className = 'sheet'; $('eggImg').src = ''; render(); break;
+      case 'bgBtn': s.bg = !s.bg; s.bgPicked = true; save(); render(); break;
+      case 'newBtn': $('newSheet').className = 'sheet pic open'; break;
+      case 'pickSpeed': closeAll(); newGame('speed'); break;
+      case 'pick9': $('newSheet').className = 'sheet pic open diff'; break;
+      case 'newBack': $('newSheet').className = /diff/.test($('newSheet').className) ? 'sheet pic open' : 'sheet pic'; break;
+      case 'restartBtn': closeAll(); begin(); break;
+      case 'winNew': $('win').className = 'sheet'; newGame(s.diff); break;
+      case 'notesBtn': notesMode = !notesMode; render(); break;
+      case 'eraseBtn':
+        if (sel >= 0 && !s.given[sel] && !s.won) { s.val[sel] = 0; s.notes[sel] = 0; save(); render(); }
+        break;
+    }
+  }
+
+  document.addEventListener('click', onTap, false);
+  window.addEventListener('resize', function () { if (G) { size(); render(); } }, false);
+  $('ver').innerHTML = 'ksudoku v' + VERSION;
+  st = loadStats();
+  s = load();
+  if (s) { build(); render(); } else newGame('medium');
+  if (s.won) { $('winTime').innerHTML = solvedText(); $('win').className = 'sheet open'; }
+})();
+</script>
+</body>
+</html>
