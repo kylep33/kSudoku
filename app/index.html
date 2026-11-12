@@ -9,16 +9,17 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; background: #fff; color: #000; font-family: sans-serif; }
   #wrap { margin: 0 auto; padding: 2% 3%; }
-  #top { display: table; table-layout: fixed; width: 100%; margin-bottom: 2%; }
+  #top { display: table; width: 100%; margin-bottom: 2%; }
   #top > div { display: table-cell; vertical-align: middle; }
-  #title { width: 34%; font-weight: bold; }
+  #title, #top .r { width: 1%; white-space: nowrap; } /* shrink to content; the level takes the rest */
+  #title { font-weight: bold; }
   #level { text-align: center; }
-  #top .r { width: 34%; text-align: right; white-space: nowrap; }
+  #top .r { text-align: right; }
   #ghostBtn { padding: 0.15em 0.35em; margin-right: 0.4em; vertical-align: middle; }
   #ghostBtn img { width: 1.3em; height: 1.3em; display: block; }
   #refresh { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 9; }
   button { font: inherit; background: #fff; color: #000; border: 2px solid #000; border-radius: 6px; padding: 0.3em 0.6em; }
-  button.on { background: #000; color: #fff; }
+  button.on, button.press { background: #000; color: #fff; }
 
   table { border-collapse: collapse; margin: 0 auto; table-layout: fixed; }
   #board { border: 4px solid #000; background: #fff; } /* tiles stay solid over the picture */
@@ -60,8 +61,8 @@
   .shout { margin: -2% 0 5%; text-align: right; font-weight: bold; }
   .shout .arrow { display: inline-block; width: 0; height: 0; margin: 0 0.9em 0 0.4em; vertical-align: middle;
     border-left: 0.45em solid transparent; border-right: 0.45em solid transparent; border-bottom: 0.7em solid #000; }
-  .row { margin-bottom: 6%; }
-  .lbl { margin-bottom: 2%; }
+  .row { margin-bottom: 1em; }
+  .lbl { margin-bottom: 0.3em; }
   .row button { margin-right: 2%; }
   .ver { margin: 0; text-align: right; font-size: 0.8em; color: #555; }
   .row .main { min-width: 45%; font-weight: bold; }
@@ -77,7 +78,6 @@
   #rulesText { font-size: 1.1em; line-height: 1.4; }
   .choice.half { display: inline-block; width: 47%; margin: 0 2% 4% 0; text-align: center; font-weight: bold; }
   #pickDiff { display: none; }
-  #newSheet.diff #pickKind { display: none; }
   #newSheet.diff #pickDiff { display: block; }
 
   /* Picture backgrounds; the size is set in px from JS (Mesquite's CSS units are unreliable). */
@@ -93,13 +93,21 @@
   #achList .t { font-weight: bold; }
   #achList .d { margin: 1% 0 0 1.5em; font-size: 0.9em; }
   #achList .locked { color: #555; }
-  /* Page controls sit under the title so they are always on screen. At the ends they grey out
-     instead of vanishing, so nothing moves under your finger. */
-  .pager { display: table; table-layout: fixed; width: 100%; margin: 0 0 3%; }
-  .pager > * { display: table-cell; vertical-align: middle; }
-  .pager button { width: 100%; padding: 0.5em 0; font-weight: bold; }
-  .pager button:disabled { color: #aaa; border-color: #ccc; border-style: dashed; font-weight: normal; }
-  .pager .mid { width: 30%; text-align: center; }
+  /* Paged lists with a side bar: up/down buttons and a thumb showing where you are. At the ends the
+     buttons grey out instead of vanishing, so nothing moves under your finger. */
+  .paged { display: table; table-layout: fixed; width: 100%; }
+  .paged > .items { display: table-cell; vertical-align: top; }
+  .paged > .bar { display: table-cell; width: 2.4em; padding-left: 0.5em; vertical-align: top; }
+  .bar button { display: block; width: 100%; padding: 0.4em 0; }
+  .bar button:disabled { border-color: #ccc; border-style: dashed; }
+  .track { position: relative; width: 0.7em; margin: 0.4em auto; border: 2px solid #000; border-radius: 0.35em; }
+  .thumb { position: absolute; left: 0; right: 0; background: #000; }
+  .tri { display: inline-block; width: 0; height: 0; vertical-align: middle;
+    border-left: 0.5em solid transparent; border-right: 0.5em solid transparent; border-bottom: 0.7em solid #000; }
+  .tri.dn { border-bottom: 0; border-top: 0.7em solid #000; }
+  button:disabled .tri { border-bottom-color: #ccc; border-top-color: #ccc; }
+  button.press .tri { border-bottom-color: #fff; border-top-color: #fff; }
+  #newSheet.diff .paged { display: none; }
 
   #toast { display: none; position: fixed; left: 6%; right: 6%; top: 3%; padding: 3% 4%; z-index: 8; font-weight: bold; text-align: center; }
   #win { text-align: center; padding-top: 20%; }
@@ -131,14 +139,18 @@
     <h2>Settings</h2>
     <div class="back"><button id="closeBtn" class="done">Done</button></div>
   </div>
-  <p class="shout">CLICK THIS TO RETURN TO GAME!!!!!! <span class="arrow"></span></p>
-  <div class="row"><button id="newBtn" class="main">New game</button><button id="restartBtn" class="main">Restart puzzle</button></div>
-  <div class="row"><div class="lbl">When a number is complete</div>
-    <button data-done="show">Keep</button><button data-done="grey">Grey out</button><button data-done="hide">Hide</button>
-  </div>
-  <div class="row"><button id="bgBtn"><span class="chk" id="bgChk"></span>Picture background</button></div>
-  <div class="row"><button id="achBtn">Achievements <span id="achCount"></span></button></div>
-  <p class="ver" id="ver"></p>
+  <!-- .opt bits are dropped first when the screen is too small. -->
+  <div class="paged"><div class="items">
+    <p class="shout it opt">CLICK THIS TO RETURN TO GAME!!!!!! <span class="arrow"></span></p>
+    <div class="row it"><button id="newBtn" class="main">New game</button><button id="restartBtn" class="main">Restart puzzle</button></div>
+    <div class="row it"><div class="lbl">When a number is complete</div>
+      <button data-done="show">Keep</button><button data-done="grey">Grey out</button><button data-done="hide">Hide</button>
+    </div>
+    <div class="row it"><button id="bgBtn"><span class="chk" id="bgChk"></span>Picture background</button></div>
+    <div class="row it"><button id="timerBtn"><span class="chk" id="timerChk"></span>Show timer</button></div>
+    <div class="row it"><button id="achBtn">Achievements <span id="achCount"></span></button></div>
+    <p class="ver it opt" id="ver"></p>
+  </div><div class="bar"><button data-pg="-1" aria-label="Page up"><span class="tri"></span></button><div class="track"><div class="thumb"></div></div><button data-pg="1" aria-label="Page down"><span class="tri dn"></span></button></div></div>
 </div></div>
 
 <!-- New game in two steps: pick the kind, then (for 9x9) the difficulty. -->
@@ -148,14 +160,14 @@
     <div class="back"><button id="newBack" class="done">Back</button></div>
   </div>
   <!-- (i) shows the rules before you commit to a mode. -->
-  <table id="pickKind"><tbody id="kinds">
-    <tr><td><button data-mode="speed" class="choice"><b>Speed puzzle</b><span>6x6, timed. Best: <i id="best"></i></span></button></td><td class="i"><button class="info" data-info="speed">i</button></td></tr>
-    <tr><td><button data-mode="classic" class="choice"><b>Standard 9x9</b><span>Choose a difficulty next</span></button></td><td class="i"><button class="info" data-info="classic">i</button></td></tr>
-    <tr><td><button data-mode="fog" class="choice"><b>Fog of war</b><span>Clear the fog as you solve</span></button></td><td class="i"><button class="info" data-info="fog">i</button></td></tr>
-    <tr><td><button data-mode="chaos" class="choice"><b>Chaos</b><span>Irregular boxes</span></button></td><td class="i"><button class="info" data-info="chaos">i</button></td></tr>
-    <tr><td><button data-mode="windoku" class="choice"><b>Windoku</b><span>4 extra windows</span></button></td><td class="i"><button class="info" data-info="windoku">i</button></td></tr>
-    <tr><td><button data-mode="center" class="choice"><b>Center cells</b><span>Box centers form a 10th box</span></button></td><td class="i"><button class="info" data-info="center">i</button></td></tr>
-  </tbody></table>
+  <div class="paged"><div class="items"><table id="pickKind"><tbody id="kinds">
+    <tr class="it"><td><button data-mode="speed" class="choice"><b>Speed puzzle</b><span class="opt">6x6, timed. Best: <i id="best"></i></span></button></td><td class="i"><button class="info" data-info="speed">i</button></td></tr>
+    <tr class="it"><td><button data-mode="classic" class="choice"><b>Standard 9x9</b><span class="opt">Choose a difficulty next</span></button></td><td class="i"><button class="info" data-info="classic">i</button></td></tr>
+    <tr class="it"><td><button data-mode="fog" class="choice"><b>Fog of war</b><span class="opt">Clear the fog as you solve</span></button></td><td class="i"><button class="info" data-info="fog">i</button></td></tr>
+    <tr class="it"><td><button data-mode="chaos" class="choice"><b>Chaos</b><span class="opt">Irregular boxes</span></button></td><td class="i"><button class="info" data-info="chaos">i</button></td></tr>
+    <tr class="it"><td><button data-mode="windoku" class="choice"><b>Windoku</b><span class="opt">4 extra windows</span></button></td><td class="i"><button class="info" data-info="windoku">i</button></td></tr>
+    <tr class="it"><td><button data-mode="center" class="choice"><b>Center cells</b><span class="opt">Box centers form a 10th box</span></button></td><td class="i"><button class="info" data-info="center">i</button></td></tr>
+  </tbody></table></div><div class="bar"><button data-pg="-1" aria-label="Page up"><span class="tri"></span></button><div class="track"><div class="thumb"></div></div><button data-pg="1" aria-label="Page down"><span class="tri dn"></span></button></div></div>
   <div id="pickDiff">
     <p class="lbl" id="diffLbl"></p>
     <button data-diff="easy" class="choice half">Easy</button><button data-diff="medium" class="choice half">Medium</button>
@@ -176,8 +188,7 @@
     <h2>Achievements</h2>
     <div class="back"><button id="achDone" class="done">Done</button></div>
   </div>
-  <div class="pager"><div><button id="achPrev">Previous</button></div><div class="mid" id="achPage"></div><div><button id="achNext">Next</button></div></div>
-  <ul id="achList"></ul>
+  <div class="paged"><div class="items"><ul id="achList"></ul></div><div class="bar"><button data-pg="-1" aria-label="Page up"><span class="tri"></span></button><div class="track"><div class="thumb"></div></div><button data-pg="1" aria-label="Page down"><span class="tri dn"></span></button></div></div>
 </div></div>
 
 <div id="win" class="sheet">
@@ -212,7 +223,7 @@
     windoku: { t: 'Windoku', short: 'Windoku', rules: 'Normal sudoku rules, plus 4 extra 3x3 windows (the dotted cells). Each window also holds 1 to 9 once.' },
     center: { t: 'Center cells', short: 'Center', rules: 'Normal sudoku rules, plus the center cell of every 3x3 box (the dotted cells). Those 9 cells together also hold 1 to 9 once.' }
   };
-  var VERSION = '1.3.0'; // test.js checks this matches manifest.json
+  var VERSION = '1.3.1'; // test.js checks this matches manifest.json
   var KEY = 'ksudoku.v1', STATS = 'ksudoku.stats';
   var ACH = [
     { id: 'clean-easy', t: 'No Hints: Easy', d: 'Beat an Easy puzzle without hints.' },
@@ -238,8 +249,10 @@
   function corners() { var n = G.n; return [0, n - 1, n * (n - 1), n * n - 1]; }
   function cornersDone() { return corners().every(function (i) { return s.val[i] === s.sol[i]; }); }
   var SHEETS = ['settings', 'newSheet', 'rulesSheet', 'achSheet', 'win', 'egg'];
+  var TAP_MS = 60;  // lets the pressed look reach the e-ink before slow work starts
   function sheetOpen() { return SHEETS.some(function (id) { return /open/.test($(id).className); }); }
-  function closeAll() { $('settings').className = $('newSheet').className = 'sheet pic'; }
+  function closeAll() { each(SHEETS, function (id) { $(id).className = $(id).className.replace(' open', ''); }); }
+  function timerOn() { return s.timer !== false; } // on for saves from before the toggle
 
   function save() { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
   function saveStats() { try { localStorage.setItem(STATS, JSON.stringify(st)); } catch (e) {} }
@@ -267,7 +280,7 @@
     if (mode === 'speed') { r = Sudoku.generate(6, CLUES.speed); diff = 'speed'; }
     else if (mode === 'fog') { r = Sudoku.generateFog(FOG_CLUES); diff = null; }
     else r = Sudoku.generateMode(mode, CLUES[diff], /hard|super/.test(diff));
-    s = { mode: mode, diff: diff, n: n, done: s ? s.done : 'grey', bg: s ? s.bg : true, bgPicked: s ? s.bgPicked : false,
+    s = { mode: mode, diff: diff, n: n, done: s ? s.done : 'grey', bg: s ? s.bg : true, bgPicked: s ? s.bgPicked : false, timer: s ? s.timer : true,
           given: r.puzzle, sol: r.solution, val: r.puzzle.slice(), notes: zeros(n * n), won: false,
           needs: r.grade.used, ladder: r.grade.solved, v: r.v, fog0: r.fog || null };
     begin();
@@ -308,28 +321,86 @@
   }
 
   // Size from the real viewport: Mesquite's CSS unit support is unreliable.
-  function size() {
-    var w = Math.min(window.innerWidth * 0.94, window.innerHeight * 0.62);
-    var cs = Math.floor(w / G.n);
+  var MIN_CELL_PX = 12, MIN_FONT_PX = 14;
+  function sizeBoard(cs) {
     each(cells, function (td) { td.style.width = td.style.height = cs + 'px'; td.style.fontSize = Math.floor(cs * (G.n === 9 ? 0.6 : 0.5)) + 'px'; });
     $('board').style.width = cs * G.n + 'px';
-    document.body.style.fontSize = Math.max(16, Math.floor(Math.min(cs, window.innerWidth * 0.94 / 9) * 0.4)) + 'px';
-    // Background height matches the screen; width overflows and is cropped around the rider.
-    var bgs = 'auto ' + window.innerHeight + 'px';
-    each([document.body, $('settings'), $('newSheet'), $('rulesSheet'), $('achSheet')], function (el) { el.style.backgroundSize = bgs; el.style.webkitBackgroundSize = bgs; });
+    document.body.style.fontSize = Math.max(MIN_FONT_PX, Math.floor(Math.min(cs, window.innerWidth * 0.94 / 9) * 0.4)) + 'px';
     size.cs = cs;
   }
+  function size() {
+    var W = window.innerWidth, H = window.innerHeight, n = G.n;
+    sizeBoard(Math.floor(Math.min(W * 0.94, H * 0.62) / n));
+    // Narrow screen: the title goes so the buttons stay on one line.
+    $('title').style.display = '';
+    if ($('gear').getBoundingClientRect().right > $('wrap').getBoundingClientRect().right) $('title').style.display = 'none';
+    // Short screen: shrink the board until the whole game fits without scrolling.
+    for (var k = 0; k < 4; k++) {
+      var over = $('wrap').offsetHeight - H;
+      if (over <= 0 || size.cs <= MIN_CELL_PX) break;
+      sizeBoard(Math.max(MIN_CELL_PX, Math.floor(size.cs - over / n) - 1));
+    }
+    // Menus size from the screen, not the board, so they look the same in every mode.
+    var font = Math.max(MIN_FONT_PX, Math.floor(Math.min(W / 24, H / 34))) + 'px';
+    each(SHEETS, function (id) { $(id).style.fontSize = font; });
+    // Background height matches the screen; width overflows and is cropped around the rider.
+    var bgs = 'auto ' + H + 'px';
+    each([document.body, $('settings'), $('newSheet'), $('rulesSheet'), $('achSheet')], function (el) { el.style.backgroundSize = bgs; el.style.webkitBackgroundSize = bgs; });
+    each(SHEETS, function (id) { if (/open/.test($(id).className) && $(id).querySelector('.paged')) paginate($(id)); });
+  }
 
-  function solvedText() { return 'Solved in ' + clock(s.secs) + '.'; }
+  function solvedText() { return timerOn() || s.mode === 'speed' ? 'Solved in ' + clock(s.secs) + '.' : ''; }
   function levelText() {
-    var m = MODES[s.mode];
-    if (s.mode === 'speed') return 'Speed ' + clock(s.secs);
-    return (m.short && s.diff ? m.short + ' ' : m.short || '') + (s.diff ? LABEL[s.diff] : '');
+    var m = MODES[s.mode], name = s.mode === 'speed' ? 'Speed' : (m.short && s.diff ? m.short + ' ' : m.short || '') + (s.diff ? LABEL[s.diff] : '');
+    return name + (timerOn() ? ' ' + clock(s.secs) : '');
   }
   function openRules(mode) {
     $('rulesTitle').innerHTML = MODES[mode].t;
     $('rulesText').innerHTML = MODES[mode].rules;
-    $('rulesSheet').className = 'sheet pic open';
+    openSheet('rulesSheet');
+  }
+
+  // Pages, not scrolling: e-ink can't scroll smoothly. Items (.it) are split into pages measured on
+  // the real screen when the sheet opens; if it needs more than one page, the .opt extras go first.
+  function openSheet(id, extra) {
+    var sh = $(id);
+    sh.className = 'sheet pic open' + (extra || '');  // must be on screen to measure
+    if (sh.querySelector('.paged')) { sh.page = 0; paginate(sh); }
+  }
+  function paginate(sh) {
+    var bar = sh.querySelector('.bar');
+    bar.style.display = '';
+    var pages = layout(sh, false);
+    if (pages > 1) pages = layout(sh, true);
+    sh.pages = pages;
+    bar.style.display = pages > 1 ? '' : 'none';
+    showPage(sh);
+  }
+  function layout(sh, lite) {
+    var its = sh.querySelectorAll('.it'), items = sh.querySelector('.items');
+    each(its, function (it) { it.style.display = ''; });
+    each(sh.querySelectorAll('.opt'), function (el) { el.style.display = lite ? 'none' : ''; });
+    var box = items.getBoundingClientRect(), avail = window.innerHeight - box.top - box.left; // bottom gap mirrors the side
+    var page = 0, start = null;
+    each(its, function (it) {
+      if (it.style.display === 'none') { it.page = -1; return; }
+      var r = it.getBoundingClientRect();
+      if (start === null) start = box.top;
+      else if (r.bottom - start > avail) { page++; start = r.top; }
+      it.page = page;
+    });
+    var bs = sh.querySelector('.bar').getElementsByTagName('button'), track = sh.querySelector('.track');
+    track.style.height = Math.max(MIN_CELL_PX, avail - bs[0].offsetHeight - bs[1].offsetHeight - (track.offsetTop - bs[0].offsetTop - bs[0].offsetHeight) * 2 - 4) + 'px';
+    return page + 1;
+  }
+  function showPage(sh) {
+    sh.page = Math.max(0, Math.min(sh.page, sh.pages - 1));
+    each(sh.querySelectorAll('.it'), function (it) { it.style.display = it.page === sh.page ? '' : 'none'; });
+    var bs = sh.querySelector('.bar').getElementsByTagName('button'), th = sh.querySelector('.track').clientHeight, thumb = sh.querySelector('.thumb');
+    bs[0].disabled = sh.page === 0;
+    bs[1].disabled = sh.page === sh.pages - 1;
+    thumb.style.height = Math.floor(th / sh.pages) + 'px';
+    thumb.style.top = Math.floor(th * sh.page / sh.pages) + 'px';
   }
 
   function render() {
@@ -364,6 +435,7 @@
     $('notesBtn').className = notesMode ? 'on' : '';
     document.body.className = s.bg ? 'pic' : '';
     $('bgChk').className = s.bg ? 'chk y' : 'chk';
+    $('timerChk').className = timerOn() ? 'chk y' : 'chk';
     setHTML($('level'), levelText());
     setHTML($('best'), st.best ? clock(st.best) : 'none yet');
     setHTML($('achCount'), Object.keys(st.got).length + ' of ' + ACH.length);
@@ -382,43 +454,14 @@
     var t = $('toast'); t.innerHTML = msg; t.style.display = 'block';
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.style.display = 'none'; }, 3500);
   }
-  // Pages, not scrolling: e-ink can't scroll smoothly. Pages are measured on the real screen when
-  // the sheet opens, so they fit whatever the text size; turning a page only shows/hides items.
-  var achPage = 0, achPages = 1;
   function openAch() {
-    $('achSheet').className = 'sheet pic open';  // must be on screen to measure
-    var list = $('achList');
-    list.innerHTML = ACH.map(function (a) {
+    $('achList').innerHTML = ACH.map(function (a) {
       var got = !!st.got[a.id], secret = a.hidden && !got;
-      return '<li' + (got ? '' : ' class="locked"') + '><div class="t"><span class="chk' + (got ? ' y' : '') + '"></span>' +
+      return '<li class="it' + (got ? '' : ' locked') + '"><div class="t"><span class="chk' + (got ? ' y' : '') + '"></span>' +
         (secret ? 'HIDDEN. GOOD LUCK' : a.t) + '</div>' + (secret ? '' : '<div class="d">' + a.d + '</div>') + '</li>';
     }).join('');
-    var lis = list.getElementsByTagName('li'), bottom = window.innerHeight - window.innerWidth * 0.1, page = 0, start = null;
-    each(lis, function (li) {
-      var r = li.getBoundingClientRect();
-      if (start === null) start = r.top;
-      else if (r.bottom - start > bottom - list.getBoundingClientRect().top) { page++; start = r.top; }
-      li.page = page;
-    });
-    achPages = page + 1; achPage = 0;
-    showAchPage();
+    openSheet('achSheet');
   }
-  function showAchPage() {
-    achPage = Math.max(0, Math.min(achPage, achPages - 1));
-    each($('achList').getElementsByTagName('li'), function (li) { li.style.display = li.page === achPage ? '' : 'none'; });
-    $('achPrev').disabled = achPage === 0;
-    $('achNext').disabled = achPage === achPages - 1;
-    $('achPage').innerHTML = 'Page ' + (achPage + 1) + ' of ' + achPages;
-  }
-  // Swipe left/right to turn pages, like reading a book.
-  (function () {
-    var x0, y0, el = $('achSheet');
-    el.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, false);
-    el.addEventListener('touchend', function (e) {
-      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { achPage += dx < 0 ? 1 : -1; showAchPage(); }
-    }, false);
-  })();
 
   function press(d) {
     if (sel < 0 || s.given[sel] || s.won) return;
@@ -485,11 +528,17 @@
     if (!s || s.won || sheetOpen()) return;
     s.secs++;
     if (s.secs % 5 === 0) save();
-    if (s.diff === 'speed') $('level').innerHTML = levelText();
+    if (timerOn()) setHTML($('level'), levelText());
   }, 1000);
 
+  // Generating can take seconds on the Kindle: say so before the CPU is busy.
+  function startGame(mode, diff) {
+    closeAll();
+    toast('Making puzzle...');
+    setTimeout(function () { newGame(mode, diff); clearTimeout(toastTimer); $('toast').style.display = 'none'; }, TAP_MS);
+  }
   function pickKind(mode) {
-    if (mode === 'speed' || mode === 'fog') { closeAll(); return newGame(mode); }
+    if (mode === 'speed' || mode === 'fog') return startGame(mode);
     pickMode = mode;
     $('diffLbl').innerHTML = MODES[mode].t + ': pick a difficulty';
     $('newSheet').className = 'sheet pic open diff';
@@ -498,24 +547,32 @@
   function onTap(e) {
     var t = e.target;
     while (t && t !== document && !t.getAttribute('data-i') && t.tagName !== 'BUTTON') t = t.parentNode;
-    if (!t || t === document) return;
+    if (!t || t === document || t.disabled) return;
     if (t.id !== 'ghostBtn') ghostRun = 0;
     if (t.getAttribute('data-i')) {
       var i = +t.getAttribute('data-i');
       if (s.fog && s.fog[i]) return;
       sel = i; render(); return;
     }
+    // Buttons show pressed right away, then act, so a slow action still feels taken.
+    t.className += ' press';
+    setTimeout(function () { act(t); t.className = t.className.replace(/ ?press/, ''); }, TAP_MS);
+  }
+  function act(t) {
+    if (t.getAttribute('data-pg')) {
+      var sh = t;
+      while (!/sheet/.test(sh.className)) sh = sh.parentNode;
+      sh.page += +t.getAttribute('data-pg'); return showPage(sh);
+    }
     if (t.getAttribute('data-info') !== null) return openRules(t.getAttribute('data-info') || s.mode);
     if (t.getAttribute('data-mode')) return pickKind(t.getAttribute('data-mode'));
     if (t.getAttribute('data-n')) return press(+t.getAttribute('data-n'));
-    if (t.getAttribute('data-diff')) { closeAll(); return newGame(pickMode, t.getAttribute('data-diff')); }
+    if (t.getAttribute('data-diff')) return startGame(pickMode, t.getAttribute('data-diff'));
     if (t.getAttribute('data-done')) { s.done = t.getAttribute('data-done'); save(); return render(); }
     switch (t.id) {
-      case 'gear': $('settings').className = 'sheet pic open'; break;
+      case 'gear': openSheet('settings'); break;
       case 'closeBtn': $('settings').className = 'sheet pic'; break;
       case 'achBtn': openAch(); break;
-      case 'achPrev': achPage--; showAchPage(); break;
-      case 'achNext': achPage++; showAchPage(); break;
       case 'achDone': $('achSheet').className = 'sheet pic'; break;
       case 'ghostBtn':
         if (++ghostRun < 5) { deghost(); break; }
@@ -526,11 +583,12 @@
         break;
       case 'eggClose': $('egg').className = 'sheet'; $('eggImg').src = ''; render(); break;
       case 'bgBtn': s.bg = !s.bg; s.bgPicked = true; save(); render(); break;
-      case 'newBtn': $('newSheet').className = 'sheet pic open'; break;
+      case 'timerBtn': s.timer = !timerOn(); save(); render(); break;
+      case 'newBtn': openSheet('newSheet'); break;
       case 'rulesBack': $('rulesSheet').className = 'sheet pic'; break;
-      case 'newBack': $('newSheet').className = /diff/.test($('newSheet').className) ? 'sheet pic open' : 'sheet pic'; break;
+      case 'newBack': if (/diff/.test($('newSheet').className)) openSheet('newSheet'); else $('newSheet').className = 'sheet pic'; break;
       case 'restartBtn': closeAll(); begin(); break;
-      case 'winNew': $('win').className = 'sheet'; newGame(s.mode, s.diff); break;
+      case 'winNew': startGame(s.mode, s.diff); break;
       case 'notesBtn': notesMode = !notesMode; render(); break;
       case 'eraseBtn':
         if (sel >= 0 && !s.given[sel] && !s.won) { s.val[sel] = 0; s.notes[sel] = 0; save(); render(); }
