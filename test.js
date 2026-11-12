@@ -38,6 +38,19 @@ console.log('ok');
   assert(easy < 8, p[0] + ' too often singles-only');
 });
 
+// Variants: solution obeys every unit (incl. chaos shapes / extra units) and the puzzle is unique.
+['chaos', 'windoku', 'center'].forEach(function (m) {
+  var t = Date.now(), r = S.generateMode(m, 26, true), G = S.geom(9, r.v);
+  G.boxes.forEach(function (b) { assert.strictEqual(b.length, 9, m + ' box not 9 cells'); });
+  G.units.forEach(function (u) { assert.strictEqual(u.map(function (i) { return r.solution[i]; }).sort().join(''), '123456789', m + ' unit broken'); });
+  assert.strictEqual(S.count(G, r.puzzle.slice(), 2), 1, m + ' not unique');
+  console.log(m, 'ok in', Date.now() - t, 'ms');
+});
+
+// Fog: the start must be clearable using only what's visible.
+for (var f = 0; f < 50; f++) { var fr = S.generateFog(46); assert(S.fogPlay(fr, fr.fog).done || !fr.grade.solved, 'fog start gets stuck'); }
+console.log('fog starts solvable');
+
 // The version shown in Settings must match the package.
 var fs = require('fs'), v = JSON.parse(fs.readFileSync(__dirname + '/manifest.json')).version.join('.');
 assert(fs.readFileSync(__dirname + '/app/index.html', 'utf8').indexOf("var VERSION = '" + v + "'") >= 0, 'VERSION in index.html is not ' + v);

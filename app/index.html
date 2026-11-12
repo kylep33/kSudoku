@@ -31,6 +31,8 @@
   #board td.sel { box-shadow: inset 0 0 0 4px #000; }
   #board td.same { text-decoration: underline; }
   #board td.flash { background: #000; color: #fff; }
+  #board td.fog { background: #000; } /* solid black is fine on e-ink, mid-greys are not */
+  #board td.x { outline: 2px dotted #000; outline-offset: -7px; } /* windoku windows, center cells */
   .notes { overflow: hidden; margin: 0 auto; }
   .notes span { float: left; text-align: center; color: #333; overflow: hidden; }
 
@@ -66,6 +68,13 @@
   .choice { display: block; width: 100%; text-align: left; padding: 4% 5%; margin-bottom: 4%; }
   .choice b { display: block; font-size: 1.15em; }
   .choice span { display: block; font-size: 0.85em; margin-top: 1%; }
+  #pickKind { width: 100%; }
+  #kinds td { padding: 0 0 2.5%; vertical-align: middle; }
+  #kinds td.i { width: 3em; text-align: right; }
+  #kinds .choice { margin: 0; padding: 2.5% 4%; }
+  .info { width: 2em; height: 2em; padding: 0; border-radius: 1em; font-family: serif; font-style: italic; font-weight: bold; }
+  #top .info { width: 1.6em; height: 1.6em; margin-right: 0.4em; vertical-align: middle; }
+  #rulesText { font-size: 1.1em; line-height: 1.4; }
   .choice.half { display: inline-block; width: 47%; margin: 0 2% 4% 0; text-align: center; font-weight: bold; }
   #pickDiff { display: none; }
   #newSheet.diff #pickKind { display: none; }
@@ -106,7 +115,7 @@
   <div id="top">
     <div id="title">ksudoku</div>
     <div id="level"></div>
-    <div class="r"><button id="ghostBtn" aria-label="Refresh screen"><img src="ghost.png" alt=""></button><button id="gear">Settings</button></div>
+    <div class="r"><button class="info" data-info="" aria-label="How to play">i</button><button id="ghostBtn" aria-label="Refresh screen"><img src="ghost.png" alt=""></button><button id="gear">Settings</button></div>
   </div>
   <table id="board"></table>
   <div id="controls">
@@ -138,15 +147,28 @@
     <h2>New game</h2>
     <div class="back"><button id="newBack" class="done">Back</button></div>
   </div>
-  <div id="pickKind">
-    <button id="pickSpeed" class="choice"><b>Speed puzzle</b><span>6x6, timed. Best: <i id="best"></i></span></button>
-    <button id="pick9" class="choice"><b>Standard 9x9</b><span>Choose a difficulty next</span></button>
-  </div>
+  <!-- (i) shows the rules before you commit to a mode. -->
+  <table id="pickKind"><tbody id="kinds">
+    <tr><td><button data-mode="speed" class="choice"><b>Speed puzzle</b><span>6x6, timed. Best: <i id="best"></i></span></button></td><td class="i"><button class="info" data-info="speed">i</button></td></tr>
+    <tr><td><button data-mode="classic" class="choice"><b>Standard 9x9</b><span>Choose a difficulty next</span></button></td><td class="i"><button class="info" data-info="classic">i</button></td></tr>
+    <tr><td><button data-mode="fog" class="choice"><b>Fog of war</b><span>Clear the fog as you solve</span></button></td><td class="i"><button class="info" data-info="fog">i</button></td></tr>
+    <tr><td><button data-mode="chaos" class="choice"><b>Chaos</b><span>Irregular boxes</span></button></td><td class="i"><button class="info" data-info="chaos">i</button></td></tr>
+    <tr><td><button data-mode="windoku" class="choice"><b>Windoku</b><span>4 extra windows</span></button></td><td class="i"><button class="info" data-info="windoku">i</button></td></tr>
+    <tr><td><button data-mode="center" class="choice"><b>Center cells</b><span>Box centers form a 10th box</span></button></td><td class="i"><button class="info" data-info="center">i</button></td></tr>
+  </tbody></table>
   <div id="pickDiff">
-    <p class="lbl">Standard 9x9: pick a difficulty</p>
+    <p class="lbl" id="diffLbl"></p>
     <button data-diff="easy" class="choice half">Easy</button><button data-diff="medium" class="choice half">Medium</button>
     <button data-diff="hard" class="choice half">Hard</button><button data-diff="super" class="choice half">Super hard</button>
   </div>
+</div></div>
+
+<div id="rulesSheet" class="sheet pic"><div class="box">
+  <div class="head">
+    <h2 id="rulesTitle"></h2>
+    <div class="back"><button id="rulesBack" class="done">Back</button></div>
+  </div>
+  <div id="rulesText"></div>
 </div></div>
 
 <div id="achSheet" class="sheet pic"><div class="box">
@@ -179,7 +201,18 @@
   // super asks for 17 (the theoretical minimum), so the generator strips every clue it can and stays unique.
   var CLUES = { easy: 40, medium: 32, hard: 26, super: 17, speed: 13 };
   var LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard', super: 'Super hard', speed: 'Speed' };
-  var VERSION = '1.2.5'; // test.js checks this matches manifest.json
+  var FOG_CLUES = 46; // more clues than usual: many start hidden under the fog
+  var MODES = {
+    classic: { t: 'Standard 9x9', rules: 'Fill every row, column and 3x3 box with 1 to 9, each once.' },
+    speed: { t: 'Speed puzzle', short: 'Speed', rules: '6x6 grid with 2x3 boxes. Fill every row, column and box with 1 to 6, each once. The clock runs, so beat your best time.' },
+    fog: { t: 'Fog of war', short: 'Fog', rules: 'Normal sudoku rules, but most of the board starts under fog (black cells) and the clues under it are hidden. ' +
+      'Place a correct digit and the fog clears from the 8 cells around it. A wrong digit clears nothing. You can only write in clear cells. ' +
+      'What you can see is always enough to make progress.' },
+    chaos: { t: 'Chaos', short: 'Chaos', rules: 'Every row and column holds 1 to 9 once. The 9 boxes are irregular shapes, outlined by thick lines. Each shape also holds 1 to 9 once.' },
+    windoku: { t: 'Windoku', short: 'Windoku', rules: 'Normal sudoku rules, plus 4 extra 3x3 windows (the dotted cells). Each window also holds 1 to 9 once.' },
+    center: { t: 'Center cells', short: 'Center', rules: 'Normal sudoku rules, plus the center cell of every 3x3 box (the dotted cells). Those 9 cells together also hold 1 to 9 once.' }
+  };
+  var VERSION = '1.3.0'; // test.js checks this matches manifest.json
   var KEY = 'ksudoku.v1', STATS = 'ksudoku.stats';
   var ACH = [
     { id: 'clean-easy', t: 'No Hints: Easy', d: 'Beat an Easy puzzle without hints.' },
@@ -195,7 +228,7 @@
     { id: 'corners', t: 'Corner to Corner', d: 'Fill all four corners correctly before anything else.' },
     { id: 'ghost', t: 'Who You Gonna Call?', d: 'Tapped the ghost five times in a row.', hidden: true }
   ];
-  var s, st, G, sel = -1, notesMode = false, cells = [], keys = [], ghostRun = 0, toastTimer;
+  var s, st, G, sel = -1, pickMode, notesMode = false, cells = [], keys = [], ghostRun = 0, toastTimer;
 
   function $(id) { return document.getElementById(id); }
   function setHTML(el, h) { if (el.innerHTML !== h) el.innerHTML = h; } // every write is an e-ink redraw
@@ -204,7 +237,7 @@
   function clock(secs) { var m = Math.floor(secs / 60), x = secs % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
   function corners() { var n = G.n; return [0, n - 1, n * (n - 1), n * n - 1]; }
   function cornersDone() { return corners().every(function (i) { return s.val[i] === s.sol[i]; }); }
-  var SHEETS = ['settings', 'newSheet', 'achSheet', 'win', 'egg'];
+  var SHEETS = ['settings', 'newSheet', 'rulesSheet', 'achSheet', 'win', 'egg'];
   function sheetOpen() { return SHEETS.some(function (id) { return /open/.test($(id).className); }); }
   function closeAll() { $('settings').className = $('newSheet').className = 'sheet pic'; }
 
@@ -220,6 +253,7 @@
       if (!x.bgPicked) x.bg = true; // on unless the player chose with the toggle
       if (x.secs == null) x.secs = 0;
       if (!x.needs) { x.needs = {}; x.ladder = true; }
+      if (!x.mode) x.mode = x.diff === 'speed' ? 'speed' : 'classic'; // before 1.3 there were no variants
       return x;
     } catch (e) { return null; }
   }
@@ -228,25 +262,29 @@
     return { got: {}, best: null };
   }
 
-  function newGame(diff) {
-    var n = diff === 'speed' ? 6 : 9, r = (/hard|super/.test(diff) ? Sudoku.generateHard : Sudoku.generate)(n, CLUES[diff]);
-    s = { diff: diff, n: n, done: s ? s.done : 'grey', bg: s ? s.bg : true, bgPicked: s ? s.bgPicked : false,
+  function newGame(mode, diff) {
+    var n = mode === 'speed' ? 6 : 9, r;
+    if (mode === 'speed') { r = Sudoku.generate(6, CLUES.speed); diff = 'speed'; }
+    else if (mode === 'fog') { r = Sudoku.generateFog(FOG_CLUES); diff = null; }
+    else r = Sudoku.generateMode(mode, CLUES[diff], /hard|super/.test(diff));
+    s = { mode: mode, diff: diff, n: n, done: s ? s.done : 'grey', bg: s ? s.bg : true, bgPicked: s ? s.bgPicked : false,
           given: r.puzzle, sol: r.solution, val: r.puzzle.slice(), notes: zeros(n * n), won: false,
-          needs: r.grade.used, ladder: r.grade.solved };
+          needs: r.grade.used, ladder: r.grade.solved, v: r.v, fog0: r.fog || null };
     begin();
   }
   function begin() {  // fresh start of the current puzzle (new game or restart)
     s.val = s.given.slice(); s.notes = zeros(s.n * s.n); s.won = false; s.secs = 0; sel = -1;
+    s.fog = s.fog0 && s.fog0.slice();
     build();
     s.corner = corners().some(function (i) { return !s.given[i]; }); // only counts if there's a corner to fill
     save(); render();
   }
 
-  // Board and number pad for the current grid size.
+  // Board and number pad for the current grid size and box layout.
   function build() {
-    G = Sudoku.geom(s.n);
-    if (build.n === s.n) return;
-    build.n = s.n;
+    G = Sudoku.geom(s.n, s.v);
+    if (build.G === G) return;
+    build.G = G;
     var n = G.n, b = $('board'), html = '';
     for (var r = 0; r < n; r++) {
       html += '<tr>';
@@ -255,9 +293,12 @@
     }
     b.innerHTML = html;
     cells = b.getElementsByTagName('td');
+    var extra = {};
+    each(G.extra, function (u) { each(u, function (i) { extra[i] = true; }); });
     each(cells, function (td, i) {  // thick lines between boxes
       var r = Math.floor(i / n), c = i % n;
-      td.base = (c % G.bc === G.bc - 1 && c < n - 1 ? ' bR' : '') + (r % G.br === G.br - 1 && r < n - 1 ? ' bB' : '');
+      td.base = (c < n - 1 && G.box[i] !== G.box[i + 1] ? ' bR' : '') + (r < n - 1 && G.box[i] !== G.box[i + n] ? ' bB' : '') +
+        (extra[i] ? ' x' : '');
     });
     var row = $('pad').rows[0], ph = '';
     for (var d = 1; d <= n; d++) ph += '<td><button data-n="' + d + '">' + d + '</button></td>';
@@ -275,17 +316,32 @@
     document.body.style.fontSize = Math.max(16, Math.floor(Math.min(cs, window.innerWidth * 0.94 / 9) * 0.4)) + 'px';
     // Background height matches the screen; width overflows and is cropped around the rider.
     var bgs = 'auto ' + window.innerHeight + 'px';
-    each([document.body, $('settings'), $('newSheet'), $('achSheet')], function (el) { el.style.backgroundSize = bgs; el.style.webkitBackgroundSize = bgs; });
+    each([document.body, $('settings'), $('newSheet'), $('rulesSheet'), $('achSheet')], function (el) { el.style.backgroundSize = bgs; el.style.webkitBackgroundSize = bgs; });
     size.cs = cs;
   }
 
   function solvedText() { return 'Solved in ' + clock(s.secs) + '.'; }
-  function levelText() { return LABEL[s.diff] + (s.diff === 'speed' ? ' ' + clock(s.secs) : ''); }
+  function levelText() {
+    var m = MODES[s.mode];
+    if (s.mode === 'speed') return 'Speed ' + clock(s.secs);
+    return (m.short && s.diff ? m.short + ' ' : m.short || '') + (s.diff ? LABEL[s.diff] : '');
+  }
+  function openRules(mode) {
+    $('rulesTitle').innerHTML = MODES[mode].t;
+    $('rulesText').innerHTML = MODES[mode].rules;
+    $('rulesSheet').className = 'sheet pic open';
+  }
 
   function render() {
     var n = G.n, counts = zeros(n + 1), selV = sel >= 0 ? s.val[sel] : 0, cs = size.cs;
     each(cells, function (td, i) {
       var v = s.val[i], cls = td.base + (s.given[i] ? ' g' : ' u');
+      if (s.fog && s.fog[i]) {  // hidden clues don't count toward a finished number
+        cls += ' fog';
+        if (td.className !== cls) td.className = cls;
+        if (td.key !== 'fog') { td.key = 'fog'; td.innerHTML = ''; }
+        return;
+      }
       counts[v]++;
       if (i === sel) cls += ' sel';
       if (selV && v === selV && i !== sel) cls += ' same';
@@ -374,6 +430,7 @@
       s.notes[sel] = 0;
       // Placing a digit clears it from notes it now rules out.
       if (s.val[sel]) each(G.peers[sel], function (i) { s.notes[i] &= ~(1 << d); });
+      if (s.fog && s.val[sel] === s.sol[sel]) Sudoku.fogClear(s.fog, sel);
       if (s.val[sel] && s.corner) {
         if (cornersDone()) { s.corner = false; award('corners'); }
         else if (corners().indexOf(sel) < 0) s.corner = false;  // filled something else first
@@ -385,10 +442,10 @@
 
   // A diagonal wave across the board, then the banner. Few frames: e-ink redraws are slow.
   function win() {
-    s.won = true; save();
+    s.won = true; s.fog = null; save();
     var got = [], u = s.needs;
     function earn(id) { if (award(id, true)) got.push(id); }
-    if (s.diff !== 'speed') earn('clean-' + s.diff);
+    if (s.diff && s.diff !== 'speed') earn('clean-' + s.diff);
     if (s.diff === 'easy' && s.secs < 90) earn('speedy');
     if (u.pairs) earn('pairs');
     if (u.xwing) earn('xwing');
@@ -431,14 +488,27 @@
     if (s.diff === 'speed') $('level').innerHTML = levelText();
   }, 1000);
 
+  function pickKind(mode) {
+    if (mode === 'speed' || mode === 'fog') { closeAll(); return newGame(mode); }
+    pickMode = mode;
+    $('diffLbl').innerHTML = MODES[mode].t + ': pick a difficulty';
+    $('newSheet').className = 'sheet pic open diff';
+  }
+
   function onTap(e) {
     var t = e.target;
     while (t && t !== document && !t.getAttribute('data-i') && t.tagName !== 'BUTTON') t = t.parentNode;
     if (!t || t === document) return;
     if (t.id !== 'ghostBtn') ghostRun = 0;
-    if (t.getAttribute('data-i')) { sel = +t.getAttribute('data-i'); render(); return; }
+    if (t.getAttribute('data-i')) {
+      var i = +t.getAttribute('data-i');
+      if (s.fog && s.fog[i]) return;
+      sel = i; render(); return;
+    }
+    if (t.getAttribute('data-info') !== null) return openRules(t.getAttribute('data-info') || s.mode);
+    if (t.getAttribute('data-mode')) return pickKind(t.getAttribute('data-mode'));
     if (t.getAttribute('data-n')) return press(+t.getAttribute('data-n'));
-    if (t.getAttribute('data-diff')) { closeAll(); return newGame(t.getAttribute('data-diff')); }
+    if (t.getAttribute('data-diff')) { closeAll(); return newGame(pickMode, t.getAttribute('data-diff')); }
     if (t.getAttribute('data-done')) { s.done = t.getAttribute('data-done'); save(); return render(); }
     switch (t.id) {
       case 'gear': $('settings').className = 'sheet pic open'; break;
@@ -457,11 +527,10 @@
       case 'eggClose': $('egg').className = 'sheet'; $('eggImg').src = ''; render(); break;
       case 'bgBtn': s.bg = !s.bg; s.bgPicked = true; save(); render(); break;
       case 'newBtn': $('newSheet').className = 'sheet pic open'; break;
-      case 'pickSpeed': closeAll(); newGame('speed'); break;
-      case 'pick9': $('newSheet').className = 'sheet pic open diff'; break;
+      case 'rulesBack': $('rulesSheet').className = 'sheet pic'; break;
       case 'newBack': $('newSheet').className = /diff/.test($('newSheet').className) ? 'sheet pic open' : 'sheet pic'; break;
       case 'restartBtn': closeAll(); begin(); break;
-      case 'winNew': $('win').className = 'sheet'; newGame(s.diff); break;
+      case 'winNew': $('win').className = 'sheet'; newGame(s.mode, s.diff); break;
       case 'notesBtn': notesMode = !notesMode; render(); break;
       case 'eraseBtn':
         if (sel >= 0 && !s.given[sel] && !s.won) { s.val[sel] = 0; s.notes[sel] = 0; save(); render(); }
@@ -474,7 +543,7 @@
   $('ver').innerHTML = 'ksudoku v' + VERSION;
   st = loadStats();
   s = load();
-  if (s) { build(); render(); } else newGame('medium');
+  if (s) { build(); render(); } else newGame('classic', 'medium');
   if (s.won) { $('winTime').innerHTML = solvedText(); $('win').className = 'sheet open'; }
 })();
 </script>

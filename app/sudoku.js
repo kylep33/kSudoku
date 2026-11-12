@@ -1,5 +1,6 @@
 // Puzzle generator and technique grader. ES5 only: the Kindle's Mesquite WebKit is old.
-// Works on any grid with rectangular boxes: 9x9 (3x3 boxes) and the 6x6 speed grid (2x3 boxes).
+// Works on 9x9 (3x3 boxes) and the 6x6 speed grid (2x3 boxes). Variants pass v = { regions, extra }:
+// regions[cell] = box id replaces the rectangular boxes (chaos), extra = more units (windoku, center cells).
 var Sudoku = (function () {
   function shuffle(a) {
     for (var i = a.length - 1; i > 0; i--) {
@@ -13,16 +14,18 @@ var Sudoku = (function () {
 
   // Units (rows, columns, boxes) and each cell's peers, worked out once per grid size.
   var geoms = {};
-  function geom(n) {
-    if (geoms[n]) return geoms[n];
-    var br = n === 6 ? 2 : 3, bc = 3, size = n * n, rows = [], cols = [], boxes = [], r, c, k;
+  function geom(n, v) {
+    var key = n + JSON.stringify(v || 0);
+    if (geoms[key]) return geoms[key];
+    var br = n === 6 ? 2 : 3, bc = 3, size = n * n, rows = [], cols = [], boxes = [], box = [], r, c, k;
     for (r = 0; r < n; r++) { rows.push([]); cols.push([]); boxes.push([]); }
     for (var i = 0; i < size; i++) {
       r = Math.floor(i / n); c = i % n;
       rows[r].push(i); cols[c].push(i);
-      boxes[Math.floor(r / br) * (n / bc) + Math.floor(c / bc)].push(i);
+      box[i] = v && v.regions ? v.regions[i] : Math.floor(r / br) * (n / bc) + Math.floor(c / bc);
+      boxes[box[i]].push(i);
     }
-    var units = rows.concat(cols, boxes), peers = [], isPeer = [];
+    var extra = v && v.extra || [], units = rows.concat(cols, boxes, extra), peers = [], isPeer = [];
     for (i = 0; i < size; i++) {
       var seen = {};
       for (k = 0; k < units.length; k++) {
@@ -32,8 +35,8 @@ var Sudoku = (function () {
       peers.push(Object.keys(seen).map(Number));
       isPeer.push(seen);
     }
-    return (geoms[n] = { n: n, br: br, bc: bc, size: size, rows: rows, cols: cols, boxes: boxes,
-                         units: units, peers: peers, isPeer: isPeer, all: (1 << (n + 1)) - 2 });
+    return (geoms[key] = { n: n, br: br, bc: bc, size: size, rows: rows, cols: cols, boxes: boxes, box: box, extra: extra,
+                           units: units, peers: peers, isPeer: isPeer, all: (1 << (n + 1)) - 2 });
   }
 
   function candMask(G, g, i) {
@@ -54,11 +57,13 @@ var Sudoku = (function () {
     return { i: best, c: bits(bestM) };
   }
 
-  function fill(G, g) {
+  // budget.left caps the search: some random chaos layouts have no fill, or one that takes ages to find.
+  function fill(G, g, budget) {
+    if (--budget.left < 0) return false;
     var b = bestCell(G, g);
     if (b.i < 0) return true;
     var c = shuffle(b.c);
-    for (var k = 0; k < c.length; k++) { g[b.i] = c[k]; if (fill(G, g)) return true; }
+    for (var k = 0; k < c.length; k++) { g[b.i] = c[k]; if (fill(G, g, budget)) return true; }
     g[b.i] = 0;
     return false;
   }
@@ -73,25 +78,26 @@ var Sudoku = (function () {
     return total;
   }
 
-  // Removes clues in random order while the solution stays unique.
-  function generate(n, clues) {
-    var G = geom(n), sol = range(G.size, 0).map(function () { return 0; });
-    fill(G, sol);
+  var FILL_NODES = 5000;
+  // Removes clues in random order while the solution stays unique. Null if the grid couldn't be filled in budget.
+  function generate(n, clues, v) {
+    var G = geom(n, v), sol = range(G.size, 0).map(function () { return 0; });
+    if (!fill(G, sol, { left: FILL_NODES })) return null;
     var puz = sol.slice(), left = G.size, order = shuffle(range(G.size, 0));
     for (var k = 0; k < G.size && left > clues; k++) {
       var i = order[k], v = puz[i];
       puz[i] = 0;
       if (count(G, puz.slice(), 2) !== 1) puz[i] = v; else left--;
     }
-    return { puzzle: puz, solution: sol, grade: grade(n, puz) };
+    return { puzzle: puz, solution: sol, grade: grade(n, puz, v) };
   }
 
   // Hard levels: clue count alone often gives a singles-only puzzle, so retry until a person needs
   // more than singles. shortcut: capped at 8 tries for the slow Kindle CPU; may still return an easy one.
-  function generateHard(n, clues) {
+  function generateHard(n, clues, v) {
     for (var t = 0, r; t < 8; t++) {
-      r = generate(n, clues);
-      if (!r.grade.solved || Object.keys(r.grade.used).length > 1) break;
+      r = generate(n, clues, v);
+      if (!r || !r.grade.solved || Object.keys(r.grade.used).length > 1) break;
     }
     return r;
   }
@@ -106,8 +112,8 @@ var Sudoku = (function () {
     })(0, []);
   }
 
-  function grade(n, puzzle) {
-    var G = geom(n), g = puzzle.slice(), cand = [], used = {}, i;
+  function grade(n, puzzle, v) {
+    var G = geom(n, v), g = puzzle.slice(), cand = [], used = {}, i;
     for (i = 0; i < G.size; i++) cand.push(g[i] ? 0 : candMask(G, g, i));
 
     function place(i, d) {
@@ -248,7 +254,95 @@ var Sudoku = (function () {
     return { used: used, solved: g.indexOf(0) < 0, grid: g };
   }
 
-  return { geom: geom, generate: generate, generateHard: generateHard, grade: grade, count: count, canPlace: canPlace };
+  // ---- Variants (9x9 only) ----
+  var WINDOWS = [10, 14, 46, 50].map(function (tl) { return [0, 1, 2, 9, 10, 11, 18, 19, 20].map(function (o) { return tl + o; }); });
+  var CENTERS = [10, 13, 16, 37, 40, 43, 64, 67, 70];
+  function variant(mode) {
+    if (mode === 'windoku') return { extra: WINDOWS };
+    if (mode === 'center') return { extra: [CENTERS] };
+    if (mode === 'chaos') return { regions: chaosRegions() };
+    return undefined;
+  }
+
+  function neighbors(i, diag) {  // orthogonal (and diagonal) neighbours on the 9x9
+    var r = Math.floor(i / 9), c = i % 9, out = [];
+    for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+      if ((!dr && !dc) || (!diag && dr && dc)) continue;
+      if (r + dr >= 0 && r + dr < 9 && c + dc >= 0 && c + dc < 9) out.push((r + dr) * 9 + c + dc);
+    }
+    return out;
+  }
+  function connected(reg, id) {
+    var start = reg.indexOf(id), seen = {}, stack = [start], n = 0;
+    seen[start] = true;
+    while (stack.length) {
+      n++;
+      neighbors(stack.pop(), false).forEach(function (j) { if (reg[j] === id && !seen[j]) { seen[j] = true; stack.push(j); } });
+    }
+    return n === 9;
+  }
+  var CHAOS_SWAPS = 150;
+  // Irregular boxes: start from the 3x3 boxes and swap border cells between neighbouring boxes,
+  // keeping every box in one piece.
+  function chaosRegions() {
+    var reg = geom(9).box.slice();
+    for (var done = 0, guard = 0; done < CHAOS_SWAPS && guard < 20000; guard++) {
+      var a = Math.floor(Math.random() * 81), A = reg[a];
+      var bs = neighbors(a, false).filter(function (j) { return reg[j] !== A; });
+      if (!bs.length) continue;
+      var B = reg[bs[Math.floor(Math.random() * bs.length)]];
+      var cs = [];  // cells of B touching A, other than a's own spot
+      for (var j = 0; j < 81; j++) if (reg[j] === B && neighbors(j, false).some(function (x) { return reg[x] === A && x !== a; })) cs.push(j);
+      if (!cs.length) continue;
+      var c = cs[Math.floor(Math.random() * cs.length)];
+      reg[a] = B; reg[c] = A;
+      if (connected(reg, A) && connected(reg, B)) done++;
+      else { reg[a] = A; reg[c] = B; }
+    }
+    return reg;
+  }
+
+  // Fog: the board starts dark except a few 3x3 patches; clues under fog are hidden and a correct
+  // digit clears the fog around it. The start is built by playing it out with the grader on only
+  // what's visible: whenever that gets stuck, another patch is cleared, so the player never is.
+  function fogClear(fog, i) { fog[i] = 0; neighbors(i, true).forEach(function (j) { fog[j] = 0; }); }
+  // Plays the board out from fog0 using only visible clues, the way the player has to.
+  function fogPlay(r, fog0) {
+    var fog = fog0.slice(), known = r.puzzle.map(function () { return 0; });
+    for (var moved = true; moved;) {
+      moved = false;
+      for (var i = 0; i < 81; i++) if (!fog[i] && r.puzzle[i]) known[i] = r.puzzle[i];
+      var g = grade(9, known).grid;
+      for (i = 0; i < 81; i++) {
+        if (fog[i] || known[i] || !g[i]) continue;
+        known[i] = r.solution[i]; fogClear(fog, i); moved = true;
+      }
+    }
+    return { fog: fog, done: r.puzzle.every(function (d, i) { return d || known[i]; }) };
+  }
+  function fogStart(r) {
+    var fog0 = r.puzzle.map(function () { return 1; });
+    for (;;) {
+      var p = fogPlay(r, fog0), dark = range(81, 0).filter(function (j) { return p.fog[j]; });
+      if (p.done || !dark.length) return fog0;  // nothing hidden yet stuck: beyond the grader, as in plain sudoku
+      fogClear(fog0, dark[Math.floor(Math.random() * dark.length)]);
+    }
+  }
+  // Any 9x9 mode except fog. r.v is the variant spec the board needs to draw and check itself.
+  function generateMode(mode, clues, hard) {
+    for (;;) {
+      var v = variant(mode), r = (hard ? generateHard : generate)(9, clues, v);
+      if (r) { r.v = v; return r; }
+    }
+  }
+  function generateFog(clues) {
+    var r = generate(9, clues);
+    r.fog = fogStart(r);
+    return r;
+  }
+
+  return { geom: geom, generate: generate, generateHard: generateHard, grade: grade, count: count, canPlace: canPlace,
+           variant: variant, generateMode: generateMode, generateFog: generateFog, fogClear: fogClear, fogPlay: fogPlay };
 })();
 
 if (typeof module !== 'undefined') module.exports = Sudoku;
